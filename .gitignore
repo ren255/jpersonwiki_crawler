@@ -2,3 +2,4 @@
 *.json
 image/
 .env
+data/
