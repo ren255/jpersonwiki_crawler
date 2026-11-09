@@ -13,7 +13,7 @@
 # ---
 
 # %% _uuid="8f2839f25d086af736a60e9eeb907d3b93b6e0e5" _cell_guid="b1076dfc-b9ad-4769-8c92-a6c4dae69d19"
-# !pip install namedivider-python python-romkan-ng names-dataset
+# !pip install namedivider-python python-romkan-ng
 
 import pandas as pd
 import numpy as np
@@ -200,50 +200,3 @@ for name, df in [
 ]:
     print(name)
     print(df.head())
-
-# %%
-from names_dataset import NameDataset, NameWrapper
-
-nd = NameDataset()
-
-
-def get_name_stats(name):
-    result = nd.search(name)
-    if not result or not result.get("first_name"):
-        return None
-    fn = result["first_name"]
-    gender = fn.get("gender", {})
-    ranks = fn.get("rank", {})
-    return {"male": gender.get("Male", None), "rank": ranks.get("Japan", None)}
-
-
-# collect unique names from both columns
-hiragana_names = dataset["given_hiragana"].dropna().unique()
-kanji_names = dataset["given_kanji"].dropna().unique()
-all_names = set(hiragana_names) | set(kanji_names)
-print(f"processing {len(all_names)} names")
-
-rows = []
-hit_count = 0
-for name in all_names:
-    stats = get_name_stats(name)
-    if stats is None:
-        continue
-    hit_count += 1
-    is_hiragana = name in set(hiragana_names)
-    is_kanji = name in set(kanji_names)
-    rows.append(
-        {
-            "given_hiragana": name if is_hiragana else None,
-            "given_kanji": name if is_kanji else None,
-            "male_percentage": stats["male"],
-            "rank": stats["rank"],
-        }
-    )
-
-name_stats = pd.DataFrame(rows)
-name_stats = name_stats.dropna(subset=["rank", "male_percentage"])
-name_stats.to_csv("./dataset/name_stats.csv", index=False)
-# !sync
-
-print(f"hit rate: {hit_count}/{len(all_names)} ({hit_count/len(all_names)*100:.1f}%)")
