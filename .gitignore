@@ -1,5 +1,6 @@
 *.csv
 *.json
-image/
 .env
-data/
+local/*
+jpersonwiki/
+jnamegender/
