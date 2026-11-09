@@ -1,1 +1,254 @@
-{"metadata":{"kernelspec":{"language":"python","display_name":"Python 3","name":"python3"},"language_info":{"name":"python","version":"3.12.12","mimetype":"text/x-python","codemirror_mode":{"name":"ipython","version":3},"pygments_lexer":"ipython3","nbconvert_exporter":"python","file_extension":".py"},"kaggle":{"accelerator":"none","dataSources":[{"sourceType":"datasetVersion","sourceId":21705642}],"isInternetEnabled":true,"language":"python","sourceType":"notebook","isGpuEnabled":false}},"nbformat_minor":4,"nbformat":4,"cells":[{"cell_type":"code","source":"!pip install namedivider-python python-romkan-ng names-dataset\n\nimport pandas as pd\nimport numpy as np\nimport romkan\nimport os\nfrom namedivider import BasicNameDivider\nfrom time import time\nfrom typing import List, Tuple, Dict, Callable\nimport math\nimport matplotlib.pyplot as plt\nimport importlib","metadata":{"_uuid":"8f2839f25d086af736a60e9eeb907d3b93b6e0e5","_cell_guid":"b1076dfc-b9ad-4769-8c92-a6c4dae69d19","trusted":true,"execution":{"iopub.status.busy":"2026-05-17T04:50:39.782179Z","iopub.execute_input":"2026-05-17T04:50:39.783144Z","iopub.status.idle":"2026-05-17T04:50:43.671952Z","shell.execute_reply.started":"2026-05-17T04:50:39.78311Z","shell.execute_reply":"2026-05-17T04:50:43.671024Z"}},"outputs":[],"execution_count":null},{"cell_type":"code","source":"import re\nimport csv\n\ndef parse_enamdict(input_path, output_path):\n    rows = []\n    \n    with open(input_path, encoding='utf-8') as f:\n        for line in f:\n            line = line.strip()\n            if not line:\n                continue\n            \n            # Extract kanji, hiragana, sex, romaji\n            match = re.match(r'^(.+?)\\s*\\[(.+?)\\]\\s*/\\(([mf])\\)\\s*(.+?)/', line)\n            if not match:\n                continue\n            \n            kanji, hiragana, sex, romaji = match.groups()\n            rows.append({\n                'sex': sex,\n                'kanji': kanji,\n                'hiragana': hiragana,\n                'romaji': romaji.strip()\n            })\n    \n    with open(output_path, 'w', encoding='utf-8', newline='') as f:\n        writer = csv.DictWriter(f, fieldnames=['sex', 'kanji', 'hiragana', 'romaji'])\n        writer.writeheader()\n        writer.writerows(rows)\n\ndef parse_name_origin_to_flat_csv(sex, input_path, output_path):\n    rows = []\n    \n    with open(input_path, encoding='utf-8') as f:\n        for line in f:\n            parts = line.strip().split(',')\n            if len(parts) < 3:\n                continue\n            hiragana, romaji, *kanjis = parts\n            for kanji in kanjis:\n                rows.append({'kanji': kanji, 'hiragana': hiragana, 'romaji': romaji, 'sex': sex})\n    \n    pd.DataFrame(rows).to_csv(output_path, index=False)\n","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2026-05-17T04:34:29.978565Z","iopub.execute_input":"2026-05-17T04:34:29.979571Z","iopub.status.idle":"2026-05-17T04:34:29.988967Z","shell.execute_reply.started":"2026-05-17T04:34:29.979532Z","shell.execute_reply":"2026-05-17T04:34:29.987625Z"}},"outputs":[],"execution_count":null},{"cell_type":"code","source":"# https://github.com/rgamici/japanese-names\n!curl --create-dirs -o ./intermidiate/enumdict_male.txt \"https://raw.githubusercontent.com/rgamici/japanese-names/refs/heads/master/male\"\n!curl --create-dirs -o ./intermidiate/enumdict_female.txt \"https://raw.githubusercontent.com/rgamici/japanese-names/refs/heads/master/female\"\n!sync\n\nparse_enamdict(\"./intermidiate/enumdict_male.txt\",\"./intermidiate/enumdict_male.csv\")\nparse_enamdict(\"./intermidiate/enumdict_female.txt\",\"./intermidiate/enumdict_female.csv\")\n!sync\n\nenamdict_male = pd.read_csv(\"./intermidiate/enumdict_male.csv\")\nenamdict_female = pd.read_csv(\"./intermidiate/enumdict_female.csv\")\nenamdict = pd.concat([enamdict_male, enamdict_female])\n\n# https://github.com/shuheilocale/japanese-personal-name-dataset\n!curl --create-dirs -o ./intermidiate/name_origin_male.txt \"https://raw.githubusercontent.com/shuheilocale/japanese-personal-name-dataset/refs/heads/main/japanese_personal_name_dataset/dataset/first_name_man_org.csv\"\n!curl --create-dirs -o ./intermidiate/name_origin_female.txt \"https://raw.githubusercontent.com/shuheilocale/japanese-personal-name-dataset/refs/heads/main/japanese_personal_name_dataset/dataset/first_name_woman_org.csv\"\n!sync\n\nparse_name_origin_to_flat_csv(\"male\",\"./intermidiate/name_origin_male.txt\",\"./intermidiate/name_origin_male.csv\")\nparse_name_origin_to_flat_csv(\"female\",\"./intermidiate/name_origin_female.txt\",\"./intermidiate/name_origin_female.csv\")\n!sync\n\nname_origin_male = pd.read_csv(\"./intermidiate/name_origin_male.csv\")\nname_origin_female = pd.read_csv(\"./intermidiate/name_origin_female.csv\")\nname_origin = pd.concat([name_origin_male, name_origin_female])\n\nsplits = {'train': 'gendec-train.csv', 'validation': 'gendec-dev.csv', 'test': 'gendec-test.csv'}\ngendec = pd.concat([\n    pd.read_csv(\"hf://datasets/tarudesu/gendec-dataset/\" + path)\n    for path in splits.values()\n])\n\nwiki = pd.read_csv(\"/kaggle/input/datasets/rentoda/japanese-names-with-gender/data.csv\")\nfacebook = pd.read_csv(\n    \"/kaggle/input/datasets/rentoda/facebook-533m-user-leak/name_dataset/data/JP.csv\",\n    header=None,\n    names=['first', 'last', 'gender', 'country']\n)\n\n\nenamdict.columns = [\"sex\", \"kanji\", \"hiragana\", \"romaji\"]\nwiki.columns = ['sex', 'kanji', 'hiragana', 'pageid', 'birth_year', 'blood_type',\n       'height', 'weight', 'occupation', 'education', 'birth_place',\n       'birth_date', 'nationality']\nname_origin.columns = [\"kanji\", \"hiragana\", \"romaji\", \"sex\"]\ngendec.columns = ['Gender', 'Kanji', 'Higarana', 'Romaji']\nfacebook.columns = [\"first_name\", \"last_name\", \"sex\", \"country\"]","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2026-05-17T04:50:44.411605Z","iopub.execute_input":"2026-05-17T04:50:44.412146Z","iopub.status.idle":"2026-05-17T04:50:50.879882Z","shell.execute_reply.started":"2026-05-17T04:50:44.412107Z","shell.execute_reply":"2026-05-17T04:50:50.878528Z"}},"outputs":[],"execution_count":null},{"cell_type":"code","source":"def preprocess_gendec(df: pd.DataFrame) -> pd.DataFrame:\n    basic_divider = BasicNameDivider()\n    divided = df[\"Kanji\"].apply(lambda x: basic_divider.divide_name(x))\n    romaji_parts = df[\"Romaji\"].str.split()\n    df[\"family_kanji\"] = divided.apply(lambda x: x.family)\n    df[\"given_kanji\"] = divided.apply(lambda x: x.given)\n    full_hira = df[\"Romaji\"].apply(romkan.to_hiragana).str.split()\n    df[\"family_hiragana\"] = full_hira.str[0]\n    df[\"given_hiragana\"] = full_hira.str[1]\n    df[\"sex\"] = df[\"Gender\"].str.lower()\n    return df[[\"sex\", \"given_kanji\", \"given_hiragana\", \"family_kanji\", \"family_hiragana\"]]\n\ndef preprocess_facebook(df: pd.DataFrame) -> pd.DataFrame:\n    \"\"\"日本語が含まれない名前はすべて排除\"\"\"\n    df = df.copy()\n    df.loc[df[\"sex\"] == \"M\", \"sex\"] = \"male\"\n    df.loc[df[\"sex\"] == \"F\", \"sex\"] = \"female\"\n    df = df.dropna(subset=[\"first_name\", \"sex\"])\n\n    def to_hira_or_none(name):\n        if not isinstance(name, str):\n            return None, None\n        h = romkan.to_hiragana(name)\n        if re.search(r\"[a-zA-Z]\", h):\n            return None, name if re.fullmatch(r\"[一-龯]+\", name) else None\n        if re.fullmatch(r\"[ぁ-んー]+\", h):\n            return h, None\n        return None, h if re.fullmatch(r\"[一-龯]+\", h) else None\n\n    given = df[\"first_name\"].apply(to_hira_or_none)\n    df[\"given_hiragana\"] = given.apply(lambda x: x[0])\n    df[\"given_kanji\"] = given.apply(lambda x: x[1])\n\n    family = df[\"last_name\"].apply(to_hira_or_none)\n    df[\"family_hiragana\"] = family.apply(lambda x: x[0])\n    df[\"family_kanji\"] = family.apply(lambda x: x[1])\n\n    return df[[\"sex\", \"given_kanji\", \"given_hiragana\", \"family_kanji\", \"family_hiragana\"]]\n\ndef preprocess_wiki(df: pd.DataFrame) -> pd.DataFrame:\n    basic_divider = BasicNameDivider()\n    divided = df[\"kanji\"].apply(lambda x: basic_divider.divide_name(str(x)))\n    hira_parts = df[\"hiragana\"].str.split()\n    df[\"family_kanji\"] = divided.apply(lambda x: x.family)\n    df[\"given_kanji\"] = divided.apply(lambda x: x.given)\n    df[\"family_hiragana\"] = hira_parts.str[0]\n    df[\"given_hiragana\"] = hira_parts.str[1]\n    return df[[\"sex\", \"given_kanji\", \"given_hiragana\", \"family_kanji\", \"family_hiragana\", \"birth_year\"]]\n\nwiki[\"birth_year\"] = pd.to_numeric(wiki[\"birth_year\"], errors=\"coerce\").astype(\"Int64\")\nfacebook = preprocess_facebook(facebook)\ngendec = preprocess_gendec(gendec)\nwiki = preprocess_wiki(wiki)\n\n# given nameのみのデータセット\nenamdict_out = enamdict.rename(columns={\"kanji\": \"given_kanji\", \"hiragana\": \"given_hiragana\"})[[\"sex\", \"given_kanji\", \"given_hiragana\"]]\nname_origin_out = name_origin.rename(columns={\"kanji\": \"given_kanji\", \"hiragana\": \"given_hiragana\"})[[\"sex\", \"given_kanji\", \"given_hiragana\"]]\n\nenamdict_out[\"sex\"] = enamdict_out[\"sex\"].replace({\"m\": \"male\", \"f\": \"female\"})\n\nwiki[\"dataset\"] = \"wiki\"\nfacebook[\"dataset\"] = \"facebook\"\ngendec[\"dataset\"] = \"gendec\"\nenamdict_out[\"dataset\"] = \"enamdict\"\nname_origin_out[\"dataset\"] = \"name_origin\"\n\ndataset = pd.concat([wiki, facebook, gendec, enamdict_out, name_origin_out], ignore_index=True)\ndataset = dataset[[\"dataset\", \"sex\", \"given_kanji\", \"given_hiragana\", \"family_kanji\", \"family_hiragana\", \"birth_year\"]]\ndataset.to_csv(\"dataset.csv\", index=False)\n\nos.makedirs(\"./data\", exist_ok=True)\nwiki.to_csv(\"./data/wiki.csv\", index=False)\nfacebook.to_csv(\"./data/facebook.csv\", index=False)\ngendec.to_csv(\"./data/gendec.csv\", index=False)\nenamdict_out.to_csv(\"./data/enamdict.csv\", index=False)\nname_origin_out.to_csv(\"./data/name_origin.csv\", index=False)\n!sync","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2026-05-17T04:57:42.211224Z","iopub.execute_input":"2026-05-17T04:57:42.212165Z","iopub.status.idle":"2026-05-17T04:58:44.525624Z","shell.execute_reply.started":"2026-05-17T04:57:42.212133Z","shell.execute_reply":"2026-05-17T04:58:44.524573Z"}},"outputs":[],"execution_count":null},{"cell_type":"code","source":"for name, df in [(\"enamdict\", enamdict), (\"wiki\", wiki), (\"name_origin\", name_origin), (\"gendec\", gendec), (\"facebook\", facebook)]:\n    print(name)\n    print(df.head())","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2026-05-17T04:59:37.788254Z","iopub.execute_input":"2026-05-17T04:59:37.788975Z","iopub.status.idle":"2026-05-17T04:59:37.80396Z","shell.execute_reply.started":"2026-05-17T04:59:37.788935Z","shell.execute_reply":"2026-05-17T04:59:37.802999Z"}},"outputs":[],"execution_count":null},{"cell_type":"code","source":"from names_dataset import NameDataset, NameWrapper\n\nnd = NameDataset()\n\ndef get_name_stats(name):\n    result = nd.search(name)\n    if not result or not result.get('first_name'):\n        return None\n    fn = result['first_name']\n    gender = fn.get('gender', {})\n    ranks = fn.get('rank', {})\n    return {\n        'male': gender.get('Male', None),\n        'rank': ranks.get('Japan', None)\n    }\n\n# collect unique names from both columns\nhiragana_names = dataset[\"given_hiragana\"].dropna().unique()\nkanji_names = dataset[\"given_kanji\"].dropna().unique()\nall_names = set(hiragana_names) | set(kanji_names)\nprint(f\"processing {len(all_names)} names\")\n\nrows = []\nhit_count = 0\nfor name in all_names:\n    stats = get_name_stats(name)\n    if stats is None:\n        continue\n    hit_count += 1\n    is_hiragana = name in set(hiragana_names)\n    is_kanji = name in set(kanji_names)\n    rows.append({\n        \"given_hiragana\": name if is_hiragana else None,\n        \"given_kanji\": name if is_kanji else None,\n        \"male_percentage\": stats[\"male\"],\n        \"rank\": stats[\"rank\"]\n    })\n\nname_stats = pd.DataFrame(rows)\nname_stats = name_stats.dropna(subset=[\"rank\", \"male_percentage\"])\nname_stats.to_csv(\"./data/name_stats.csv\", index=False)\n!sync\n\nprint(f\"hit rate: {hit_count}/{len(all_names)} ({hit_count/len(all_names)*100:.1f}%)\")","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2026-05-17T05:12:52.893655Z","iopub.execute_input":"2026-05-17T05:12:52.894208Z","iopub.status.idle":"2026-05-17T05:17:59.464557Z","shell.execute_reply.started":"2026-05-17T05:12:52.894174Z","shell.execute_reply":"2026-05-17T05:17:59.463581Z"}},"outputs":[],"execution_count":null}]}
+# ---
+# jupyter:
+#   jupytext:
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.6
+#   kernelspec:
+#     display_name: Python 3
+#     language: python
+#     name: python3
+# ---
+
+# %% _uuid="8f2839f25d086af736a60e9eeb907d3b93b6e0e5" _cell_guid="b1076dfc-b9ad-4769-8c92-a6c4dae69d19"
+# !pip install namedivider-python python-romkan-ng names-dataset
+
+import pandas as pd
+import numpy as np
+import romkan
+import os
+from namedivider import BasicNameDivider
+from time import time
+from typing import List, Tuple, Dict, Callable
+import math
+import matplotlib.pyplot as plt
+import importlib
+
+# %%
+import re
+import csv
+
+def parse_enamdict(input_path, output_path):
+    rows = []
+    
+    with open(input_path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Extract kanji, hiragana, sex, romaji
+            match = re.match(r'^(.+?)\s*\[(.+?)\]\s*/\(([mf])\)\s*(.+?)/', line)
+            if not match:
+                continue
+            
+            kanji, hiragana, sex, romaji = match.groups()
+            rows.append({
+                'sex': sex,
+                'kanji': kanji,
+                'hiragana': hiragana,
+                'romaji': romaji.strip()
+            })
+    
+    with open(output_path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=['sex', 'kanji', 'hiragana', 'romaji'])
+        writer.writeheader()
+        writer.writerows(rows)
+
+def parse_name_origin_to_flat_csv(sex, input_path, output_path):
+    rows = []
+    
+    with open(input_path, encoding='utf-8') as f:
+        for line in f:
+            parts = line.strip().split(',')
+            if len(parts) < 3:
+                continue
+            hiragana, romaji, *kanjis = parts
+            for kanji in kanjis:
+                rows.append({'kanji': kanji, 'hiragana': hiragana, 'romaji': romaji, 'sex': sex})
+    
+    pd.DataFrame(rows).to_csv(output_path, index=False)
+
+
+
+# %%
+# https://github.com/rgamici/japanese-names
+# !curl --create-dirs -o ./intermidiate/enumdict_male.txt "https://raw.githubusercontent.com/rgamici/japanese-names/refs/heads/master/male"
+# !curl --create-dirs -o ./intermidiate/enumdict_female.txt "https://raw.githubusercontent.com/rgamici/japanese-names/refs/heads/master/female"
+# !sync
+
+parse_enamdict("./intermidiate/enumdict_male.txt","./intermidiate/enumdict_male.csv")
+parse_enamdict("./intermidiate/enumdict_female.txt","./intermidiate/enumdict_female.csv")
+# !sync
+
+enamdict_male = pd.read_csv("./intermidiate/enumdict_male.csv")
+enamdict_female = pd.read_csv("./intermidiate/enumdict_female.csv")
+enamdict = pd.concat([enamdict_male, enamdict_female])
+
+# https://github.com/shuheilocale/japanese-personal-name-dataset
+# !curl --create-dirs -o ./intermidiate/name_origin_male.txt "https://raw.githubusercontent.com/shuheilocale/japanese-personal-name-dataset/refs/heads/main/japanese_personal_name_dataset/dataset/first_name_man_org.csv"
+# !curl --create-dirs -o ./intermidiate/name_origin_female.txt "https://raw.githubusercontent.com/shuheilocale/japanese-personal-name-dataset/refs/heads/main/japanese_personal_name_dataset/dataset/first_name_woman_org.csv"
+# !sync
+
+parse_name_origin_to_flat_csv("male","./intermidiate/name_origin_male.txt","./intermidiate/name_origin_male.csv")
+parse_name_origin_to_flat_csv("female","./intermidiate/name_origin_female.txt","./intermidiate/name_origin_female.csv")
+# !sync
+
+name_origin_male = pd.read_csv("./intermidiate/name_origin_male.csv")
+name_origin_female = pd.read_csv("./intermidiate/name_origin_female.csv")
+name_origin = pd.concat([name_origin_male, name_origin_female])
+
+splits = {'train': 'gendec-train.csv', 'validation': 'gendec-dev.csv', 'test': 'gendec-test.csv'}
+gendec = pd.concat([
+    pd.read_csv("hf://datasets/tarudesu/gendec-dataset/" + path)
+    for path in splits.values()
+])
+
+wiki = pd.read_csv("/kaggle/input/datasets/rentoda/japanese-names-with-gender/data.csv")
+facebook = pd.read_csv(
+    "/kaggle/input/datasets/rentoda/facebook-533m-user-leak/name_dataset/data/JP.csv",
+    header=None,
+    names=['first', 'last', 'gender', 'country']
+)
+
+
+enamdict.columns = ["sex", "kanji", "hiragana", "romaji"]
+wiki.columns = ['sex', 'kanji', 'hiragana', 'pageid', 'birth_year', 'blood_type',
+       'height', 'weight', 'occupation', 'education', 'birth_place',
+       'birth_date', 'nationality']
+name_origin.columns = ["kanji", "hiragana", "romaji", "sex"]
+gendec.columns = ['Gender', 'Kanji', 'Higarana', 'Romaji']
+facebook.columns = ["first_name", "last_name", "sex", "country"]
+
+
+# %%
+def preprocess_gendec(df: pd.DataFrame) -> pd.DataFrame:
+    basic_divider = BasicNameDivider()
+    divided = df["Kanji"].apply(lambda x: basic_divider.divide_name(x))
+    romaji_parts = df["Romaji"].str.split()
+    df["family_kanji"] = divided.apply(lambda x: x.family)
+    df["given_kanji"] = divided.apply(lambda x: x.given)
+    full_hira = df["Romaji"].apply(romkan.to_hiragana).str.split()
+    df["family_hiragana"] = full_hira.str[0]
+    df["given_hiragana"] = full_hira.str[1]
+    df["sex"] = df["Gender"].str.lower()
+    return df[["sex", "given_kanji", "given_hiragana", "family_kanji", "family_hiragana"]]
+
+def preprocess_facebook(df: pd.DataFrame) -> pd.DataFrame:
+    """日本語が含まれない名前はすべて排除"""
+    df = df.copy()
+    df.loc[df["sex"] == "M", "sex"] = "male"
+    df.loc[df["sex"] == "F", "sex"] = "female"
+    df = df.dropna(subset=["first_name", "sex"])
+
+    def to_hira_or_none(name):
+        if not isinstance(name, str):
+            return None, None
+        h = romkan.to_hiragana(name)
+        if re.search(r"[a-zA-Z]", h):
+            return None, name if re.fullmatch(r"[一-龯]+", name) else None
+        if re.fullmatch(r"[ぁ-んー]+", h):
+            return h, None
+        return None, h if re.fullmatch(r"[一-龯]+", h) else None
+
+    given = df["first_name"].apply(to_hira_or_none)
+    df["given_hiragana"] = given.apply(lambda x: x[0])
+    df["given_kanji"] = given.apply(lambda x: x[1])
+
+    family = df["last_name"].apply(to_hira_or_none)
+    df["family_hiragana"] = family.apply(lambda x: x[0])
+    df["family_kanji"] = family.apply(lambda x: x[1])
+
+    return df[["sex", "given_kanji", "given_hiragana", "family_kanji", "family_hiragana"]]
+
+def preprocess_wiki(df: pd.DataFrame) -> pd.DataFrame:
+    basic_divider = BasicNameDivider()
+    divided = df["kanji"].apply(lambda x: basic_divider.divide_name(str(x)))
+    hira_parts = df["hiragana"].str.split()
+    df["family_kanji"] = divided.apply(lambda x: x.family)
+    df["given_kanji"] = divided.apply(lambda x: x.given)
+    df["family_hiragana"] = hira_parts.str[0]
+    df["given_hiragana"] = hira_parts.str[1]
+    return df[["sex", "given_kanji", "given_hiragana", "family_kanji", "family_hiragana", "birth_year"]]
+
+wiki["birth_year"] = pd.to_numeric(wiki["birth_year"], errors="coerce").astype("Int64")
+facebook = preprocess_facebook(facebook)
+gendec = preprocess_gendec(gendec)
+wiki = preprocess_wiki(wiki)
+
+# given nameのみのデータセット
+enamdict_out = enamdict.rename(columns={"kanji": "given_kanji", "hiragana": "given_hiragana"})[["sex", "given_kanji", "given_hiragana"]]
+name_origin_out = name_origin.rename(columns={"kanji": "given_kanji", "hiragana": "given_hiragana"})[["sex", "given_kanji", "given_hiragana"]]
+
+enamdict_out["sex"] = enamdict_out["sex"].replace({"m": "male", "f": "female"})
+
+wiki["dataset"] = "wiki"
+facebook["dataset"] = "facebook"
+gendec["dataset"] = "gendec"
+enamdict_out["dataset"] = "enamdict"
+name_origin_out["dataset"] = "name_origin"
+
+dataset = pd.concat([wiki, facebook, gendec, enamdict_out, name_origin_out], ignore_index=True)
+dataset = dataset[["dataset", "sex", "given_kanji", "given_hiragana", "family_kanji", "family_hiragana", "birth_year"]]
+dataset.to_csv("dataset.csv", index=False)
+
+os.makedirs("./data", exist_ok=True)
+wiki.to_csv("./data/wiki.csv", index=False)
+facebook.to_csv("./data/facebook.csv", index=False)
+gendec.to_csv("./data/gendec.csv", index=False)
+enamdict_out.to_csv("./data/enamdict.csv", index=False)
+name_origin_out.to_csv("./data/name_origin.csv", index=False)
+# !sync
+
+# %%
+for name, df in [("enamdict", enamdict), ("wiki", wiki), ("name_origin", name_origin), ("gendec", gendec), ("facebook", facebook)]:
+    print(name)
+    print(df.head())
+
+# %%
+from names_dataset import NameDataset, NameWrapper
+
+nd = NameDataset()
+
+def get_name_stats(name):
+    result = nd.search(name)
+    if not result or not result.get('first_name'):
+        return None
+    fn = result['first_name']
+    gender = fn.get('gender', {})
+    ranks = fn.get('rank', {})
+    return {
+        'male': gender.get('Male', None),
+        'rank': ranks.get('Japan', None)
+    }
+
+# collect unique names from both columns
+hiragana_names = dataset["given_hiragana"].dropna().unique()
+kanji_names = dataset["given_kanji"].dropna().unique()
+all_names = set(hiragana_names) | set(kanji_names)
+print(f"processing {len(all_names)} names")
+
+rows = []
+hit_count = 0
+for name in all_names:
+    stats = get_name_stats(name)
+    if stats is None:
+        continue
+    hit_count += 1
+    is_hiragana = name in set(hiragana_names)
+    is_kanji = name in set(kanji_names)
+    rows.append({
+        "given_hiragana": name if is_hiragana else None,
+        "given_kanji": name if is_kanji else None,
+        "male_percentage": stats["male"],
+        "rank": stats["rank"]
+    })
+
+name_stats = pd.DataFrame(rows)
+name_stats = name_stats.dropna(subset=["rank", "male_percentage"])
+name_stats.to_csv("./data/name_stats.csv", index=False)
+# !sync
+
+print(f"hit rate: {hit_count}/{len(all_names)} ({hit_count/len(all_names)*100:.1f}%)")
